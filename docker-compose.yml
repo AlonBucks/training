@@ -30,7 +30,7 @@ services:
     depends_on:
       cassandra:
         condition: service_healthy
-    command: "dramatiq manager"
+    command: "dramatiq app.manager"
 
   app:
     container_name: app

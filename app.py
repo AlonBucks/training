@@ -1,24 +1,25 @@
-import manager
-from flask import Flask
-from flask import request
+from app import manager
+from flask import Flask, request
 
 app = Flask(__name__)
 
 
-@app.route('/')
-def hello_world():
-    return 'Hello World!'
-
-
-@app.route('/init')
+@app.route('/init', methods=['GET', 'POST'])
 def init():
     manager.init()
-    return "ok"
+    return 'ok'
 
 
-@app.route('/index')
+@app.route('/index', methods=['GET', 'POST'])
 def index():
     manager.run_index_async()
+    return 'ok'
+
+
+@app.route('/index_doc', methods=['GET', 'POST'])
+def index_doc():
+    doc = (request.args.get('title'), request.args.get('author'), request.args.get('content'))
+    manager.index_document(doc)
     return 'ok'
 
 

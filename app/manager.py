@@ -1,11 +1,10 @@
-import cassandra_repository
-import http_repository
+from app import cassandra_repository, http_repository
 import dramatiq
 from dramatiq.brokers.rabbitmq import RabbitmqBroker
 
 
-rabbitmq_broker = RabbitmqBroker(url="amqp://guest:guest@rabbit:5672/")
-dramatiq.set_broker(rabbitmq_broker)
+# rabbitmq_broker = RabbitmqBroker(url='amqp://guest:guest@rabbit:5672/')
+# dramatiq.set_broker(rabbitmq_broker)
 
 db_rep = cassandra_repository
 network_rep = http_repository
@@ -38,37 +37,32 @@ def index():
 
 
 def index_document(doc):
+    doc_id = cassandra_repository.insert_doc(doc)
     counter = 0
     words_dict = {}
     words = doc['content'].split()
     for idx, word in enumerate(words):
         if '<' not in word:
-            fixed = fix_word(word)
-            if fixed not in common and len(fixed) >= 3:
+            word = fix_word(word)
+            if word not in common and len(word) >= 3:
 
                 next_word = None if idx + 1 >= len(words) else words[idx + 1]
 
-                if fixed not in words_dict:
-                    words_dict[fixed] = {}
-                    words_dict[fixed]['count'] = 1
-                    words_dict[fixed]['idx'] = counter
-                    words_dict[fixed]['next'] = set()
+                if word not in words_dict:
+                    words_dict[word] = {}
+                    words_dict[word]['count'] = 1
+                    words_dict[word]['idx'] = counter
+                    words_dict[word]['next'] = set()
                 else:
-                    words_dict[fixed]['count'] += 1
+                    words_dict[word]['count'] += 1
 
                 if next_word:
-                    words_dict[fixed]['next'].add(fix_word(next_word))
+                    words_dict[word]['next'].add(fix_word(next_word))
 
             counter += 1
 
     for word in words_dict:
-        db_rep.execute("UPDATE " + "words SET docs = docs + {(%s,%s):(%s,%s,%s)} where word = %s",
-                                     (doc['title'], doc['author'], words_dict[word]['count'], words_dict[word]['idx'],
-                                      words_dict[word]['next'], word))
-
-        db_rep.execute("UPDATE " + "lower_words SET docs = docs + {(%s,%s):(%s,%s)} where word = %s",
-                                     (doc['title'], doc['author'], words_dict[word]['count'], words_dict[word]['idx'],
-                                      word.lower()))
+        db_rep.upsert_word(word, doc_id, words_dict[word])
 
 
 def fix_word(word):
@@ -87,16 +81,19 @@ def search(str_arg, case=False):
     rows = cassandra_repository.get_rows_by_words(str_arg.split(), table)
 
     for row in rows.current_rows:
-        for doc, details in row.docs.items():
-            key = str((doc[0], doc[1]))
-            if key in res:
-                res[key]['score'] += details[0]
+        for doc_id, details in row.docs.items():
+            if doc_id in res:
+                res[doc_id]['score'] += details[0]
             else:
-                res[key] = {}
-                res[key]['score'] = details[0]
-                res[key]['idx'] = []
+                res[doc_id] = {}
+                res[doc_id]['score'] = details[0]
+                res[doc_id]['idx'] = []
 
-            res[key]['idx'].append((row.word, details[1]))
+            res[doc_id]['idx'].append((row.word, details[1]))
+
+    docs_rows = cassandra_repository.get_documents_by_ids(list(res.keys())).current_rows
+    docs_dict = {x.id: x for x in docs_rows}
+    res = {str((docs_dict[doc].title, docs_dict[doc].author)): res[doc] for doc in res}
 
     return res
 
@@ -104,7 +101,7 @@ def search(str_arg, case=False):
 def exact(str_arg):
     words = str_arg.split()
     rows = db_rep.get_rows_by_words(words, 'words')
-    res = []
+    res_docs = []
 
     if len(words) == len(rows.current_rows):
         words_dict = {}
@@ -112,14 +109,18 @@ def exact(str_arg):
             words_dict[row.word] = row.docs
 
         for doc, details in words_dict[words[0]].items():
-            check_doc(words, words_dict, doc, details[2], 1, res)
+            check_doc(words, words_dict, doc, details[2], 1, res_docs)
+
+    docs_rows = cassandra_repository.get_documents_by_ids(res_docs).current_rows
+
+    res = [str((doc.title, doc.author)) for doc in docs_rows]
 
     return str(res)
 
 
 def check_doc(words, words_dict, doc, next_words, idx, res):
     if idx == len(words):
-        res.append(str(doc))
+        res.append(doc)
         return
 
     if words[idx] in next_words:

@@ -1,26 +1,25 @@
 import unittest
-import manager
-import cassandra_repository
+from app import manager, cassandra_repository
 from unittest.mock import Mock
 
 
 def get_documents_mock():
     return {
-      "documents": [
+      'documents': [
         {
-          "author": "Alon", 
-          "content": "test1 test2", 
-          "title": "tables"
+          'author': 'Alon',
+          'content': 'test1 test2',
+          'title': 'tables'
         }, 
         {
-          "author": "Alon", 
-          "content": "test4 test5 test4, test9",
-          "title": "chairs"
+          'author': 'Alon',
+          'content': 'test4 test5 test4, test9',
+          'title': 'chairs'
         },  
         {
-          "author": "Dani", 
-          "content": "test3 test2 test3 test4",
-          "title": "tables"
+          'author': 'Dani',
+          'content': 'test3 test2 test3 test4',
+          'title': 'tables'
         }, 
     ]}
 
@@ -40,22 +39,32 @@ class TestApp(unittest.TestCase):
         self.assertEqual(len(rows.current_rows), 2)
         for row in rows.current_rows:
             if row.word == 'test1':
+                docs_rows = cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
                 self.assertEqual(len(row.docs), 1)
-                self.assertIn(("tables", "Alon"), row.docs)
-                self.assertEqual(row.docs[("tables", "Alon")][0], 1)
-                self.assertEqual(row.docs[("tables", "Alon")][1], 0)
-                self.assertEqual(row.docs[("tables", "Alon")][2], {'test2'})
+                self.assertEqual(len(docs_rows), 1)
+                self.assertEqual(docs_rows[0].title, 'tables')
+                self.assertEqual(docs_rows[0].author, 'Alon')
+                key = list(row.docs.keys())[0]
+                self.assertEqual(row.docs[key][0], 1)
+                self.assertEqual(row.docs[key][1], 0)
+                self.assertEqual(row.docs[key][2], {'test2'})
 
             if row.word == 'test4':
+                docs_rows = cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
                 self.assertEqual(len(row.docs), 2)
-                self.assertIn(("chairs", "Alon"), row.docs)
-                self.assertIn(("tables", "Dani"), row.docs)
-                self.assertEqual(row.docs[("chairs", "Alon")][0], 2)
-                self.assertEqual(row.docs[("chairs", "Alon")][1], 0)
-                self.assertEqual(row.docs[("chairs", "Alon")][2], {'test5', 'test9'})
-                self.assertEqual(row.docs[("tables", "Dani")][0], 1)
-                self.assertEqual(row.docs[("tables", "Dani")][1], 3)
-                self.assertEqual(row.docs[("tables", "Dani")][2], {})
+                self.assertEqual(len(docs_rows), 2)
+                first_key = [doc.id for doc in docs_rows if doc.title == 'chairs' and doc.author == 'Alon']
+                second_key = [doc.id for doc in docs_rows if doc.title == 'tables' and doc.author == 'Dani']
+                self.assertEqual(len(first_key), 1)
+                self.assertEqual(len(second_key), 1)
+                first_key = first_key[0]
+                second_key = second_key[0]
+                self.assertEqual(row.docs[first_key][0], 2)
+                self.assertEqual(row.docs[first_key][1], 0)
+                self.assertEqual(row.docs[first_key][2], {'test5', 'test9'})
+                self.assertEqual(row.docs[second_key][0], 1)
+                self.assertEqual(row.docs[second_key][1], 3)
+                self.assertEqual(row.docs[second_key][2], {})
 
     def test_search(self):
         res = manager.search('test1 test4')
@@ -102,6 +111,7 @@ class TestApp(unittest.TestCase):
 
     def tearDown(self):
         cassandra_repository.clear_test()
+        cassandra_repository.keyspace = 'words'
 
 
 if __name__ == '__main__':
