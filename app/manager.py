@@ -3,8 +3,8 @@ import dramatiq
 from dramatiq.brokers.rabbitmq import RabbitmqBroker
 
 
-# rabbitmq_broker = RabbitmqBroker(url='amqp://guest:guest@rabbit:5672/')
-# dramatiq.set_broker(rabbitmq_broker)
+rabbitmq_broker = RabbitmqBroker(url='amqp://guest:guest@rabbit:5672/')
+dramatiq.set_broker(rabbitmq_broker)
 
 db_rep = cassandra_repository
 network_rep = http_repository
