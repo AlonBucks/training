@@ -7,20 +7,20 @@ app = Flask(__name__)
 @app.route('/init', methods=['GET', 'POST'])
 def init():
     manager.init()
-    return 'ok'
+    return 'App successfully initialized'
 
 
 @app.route('/index', methods=['GET', 'POST'])
 def index():
     manager.run_index_async()
-    return 'ok'
+    return 'Indexing all documents'
 
 
 @app.route('/index_doc', methods=['GET', 'POST'])
 def index_doc():
     doc = (request.args.get('title'), request.args.get('author'), request.args.get('content'))
     manager.index_document(doc)
-    return 'ok'
+    return 'Document successfully indexed'
 
 
 @app.route('/search')
