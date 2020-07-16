@@ -1,45 +1,51 @@
 import os
 import uuid
+from typing import List
 from cassandra.cluster import Cluster
 from cassandra import query
 from app import config
+from injector import singleton
 
 
+@singleton
 class CassandraRepository:
 
     def __init__(self):
         self._session = None
-        self._key_space = 'words'
+        self._keyspace = 'words_db'
+        self._cluster = Cluster([config.CASSANDRA_HOST_NAME])
+
+    def create_session(self):
+        self._session = self._cluster.connect()
+        self.execute(f'CREATE KEYSPACE if not exists "{self._keyspace}" WITH REPLICATION = ' +
+                     "{'class': 'SimpleStrategy','replication_factor': 1};")
+        self._session = self._cluster.connect(self._keyspace)
 
     @property
     def session(self):
         if self._session is None:
-            cluster = Cluster([config.CASSANDRA_HOST_NAME])
-            self._session = cluster.connect()
-            self.execute('CREATE KEYSPACE if not exists "' + self._key_space + '" WITH REPLICATION = {' +
-                         "'class': 'SimpleStrategy','replication_factor': 1};")
-            self._session = cluster.connect(self._key_space)
+            self._session = self._cluster.connect(self._keyspace)
         return self._session
 
-    def set_key_space(self, key_space):
-        self._key_space = key_space
+    def set_keyspace(self, keyspace):
+        self._keyspace = keyspace
 
     def execute(self, query_to_run, params=None):
         return self.session.execute(query_to_run, params)
 
-    def get_rows_by_words(self, words, table):
+    def get_db_rows_by_words_list(self, words: List[str], table: str):
         query_state = 'SELECT ' + f'word, docs FROM {table} WHERE word IN %s'
         rows = self.execute(query_state, (query.ValueSequence(words),))
         return rows
 
     def init(self):
 
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'init_key_space.cql'), 'r') as f:
-            key_space_statements = (line for line in f.read().split(';') if line.strip())
-        for statement in key_space_statements:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'init_keyspace.cql'), 'r') as f:
+            keyspace_statements = (line for line in f.read().split(';') if line.strip())
+        for statement in keyspace_statements:
             self.execute(statement)
 
-    def upsert_word(self, word, doc_id, details):
+    def upsert_word(self, word: str, doc_id: str, details):
         self.execute('UPDATE ' + 'words SET docs = docs + {%s:(%s,%s,%s)} where word = %s',
                      (doc_id, details['count'], details['idx'], details['next'], word))
 

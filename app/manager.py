@@ -1,6 +1,8 @@
 import dramatiq
-from injector import inject, singleton, Injector
-from app import config, index_task
+from injector import inject
+from injector import singleton
+from injector import Injector
+from app import config
 from app.cassandra_repository import CassandraRepository
 from app.http_repository import HTTPRepository
 from dramatiq.brokers.rabbitmq import RabbitmqBroker
@@ -17,20 +19,21 @@ class Manager:
     def __init__(self, cassandra_repository: CassandraRepository, http_repository: HTTPRepository):
         self._cassandra_repository = cassandra_repository
         self._http_repository = http_repository
-        index_task.manager = self
 
     def init(self):
         self._cassandra_repository.init()
 
+    def create_session(self):
+        self._cassandra_repository.create_session()
+
     @staticmethod
     def run_index_async():
-        IndexTask.send()
+        BaseTask.send()
 
-    @dramatiq.actor()
     def index(self):
-        res = self._http_repository.get_all_documents()
+        all_documents = self._http_repository.get_all_documents()
         docs_set = set()
-        for doc in res['documents']:
+        for doc in all_documents['documents']:
             if (doc['title'], doc['author']) not in docs_set:
                 docs_set.add((doc['title'], doc['author']))
                 self.index_document(doc)
@@ -42,7 +45,7 @@ class Manager:
         words = doc['content'].split()
         for idx, word in enumerate(words):
             if '<' not in word:
-                word = self.fix_word(word)
+                word = self.remove_special_chars_from_word(word)
                 if word not in config.COMMON and len(word) >= 3:
 
                     next_word = None if idx + 1 >= len(words) else words[idx + 1]
@@ -56,7 +59,7 @@ class Manager:
                         words_dict[word]['count'] += 1
 
                     if next_word:
-                        words_dict[word]['next'].add(self.fix_word(next_word))
+                        words_dict[word]['next'].add(self.remove_special_chars_from_word(next_word))
 
                 counter += 1
 
@@ -64,7 +67,7 @@ class Manager:
             self._cassandra_repository.upsert_word(word, doc_id, words_dict[word])
 
     @staticmethod
-    def fix_word(word):
+    def remove_special_chars_from_word(word):
         if word:
             for char in config.BAD_CHARS:
                 word = word.replace(char, '')
@@ -76,10 +79,13 @@ class Manager:
 
         res = {}
 
-        rows = self._cassandra_repository.get_rows_by_words(str_arg.split(), table)
+        rows = self._cassandra_repository.get_db_rows_by_words_list(str_arg.split(), table)
 
         for row in rows.current_rows:
             for doc_id, details in row.docs.items():
+                # document details contains:
+                # (0) score of the word on the specific document
+                # (1) index of the first appearance of the word in the doc
                 if doc_id in res:
                     res[doc_id]['score'] += details[0]
                 else:
@@ -97,7 +103,7 @@ class Manager:
 
     def exact(self, str_arg):
         words = str_arg.split()
-        rows = self._cassandra_repository.get_rows_by_words(words, 'words')
+        rows = self._cassandra_repository.get_db_rows_by_words_list(words, 'words')
         res_docs = []
 
         if len(words) == len(rows.current_rows):
@@ -135,9 +141,3 @@ class BaseTask(GenericActor):
     def perform(self):
         manager = Injector().get(Manager)
         manager.index(manager)
-
-
-class IndexTask(BaseTask):
-
-    def get_task_name(self):
-        return 'Index'

@@ -1,4 +1,5 @@
-from flask import Flask, request
+from flask import Flask
+from flask import request
 from injector import Injector
 from app.manager import Manager
 
@@ -48,6 +49,11 @@ def exact():
         return 'phrase parameter not exists'
 
     return Injector().get(Manager).exact(phrase)
+
+
+@app.before_first_request
+def before_first_request():
+    Injector().get(Manager).create_session()
 
 
 if __name__ == '__main__':

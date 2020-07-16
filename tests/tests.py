@@ -29,7 +29,7 @@ class TestApp(unittest.TestCase):
 
     def setUp(self):
         self.cassandra_repository = CassandraRepository()
-        self.cassandra_repository.set_key_space('test')
+        self.cassandra_repository.set_keyspace('test')
         self.cassandra_repository.init()
         http_mock = Mock()
         http_mock.get_all_documents = get_documents_mock
@@ -37,7 +37,7 @@ class TestApp(unittest.TestCase):
         self.manager.index(self.manager)
 
     def test_index(self):
-        rows = self.cassandra_repository.get_rows_by_words(['test1', 'test4'], 'words')
+        rows = self.cassandra_repository.get_db_rows_by_words_list(['test1', 'test4'], 'words')
         self.assertEqual(len(rows.current_rows), 2)
         for row in rows.current_rows:
             if row.word == 'test1':
@@ -83,9 +83,9 @@ class TestApp(unittest.TestCase):
         self.assertEqual(res, "[\"('tables', 'Dani')\"]")
 
     def test_fix_word(self):
-        self.assertEqual(self.manager.fix_word('AbCd'), 'AbCd')
-        self.assertEqual(self.manager.fix_word(None), None)
-        self.assertEqual(self.manager.fix_word('A:()bC,..d'), 'AbCd')
+        self.assertEqual(self.manager.remove_special_chars_from_word('AbCd'), 'AbCd')
+        self.assertEqual(self.manager.remove_special_chars_from_word(None), None)
+        self.assertEqual(self.manager.remove_special_chars_from_word('A:()bC,..d'), 'AbCd')
 
     def test_check_doc(self):
         words = ['abcd', 'popo', 'kal', 'kjkj']
