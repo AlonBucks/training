@@ -8,9 +8,9 @@ from app.http_repository import HTTPRepository
 from dramatiq.brokers.rabbitmq import RabbitmqBroker
 from dramatiq import GenericActor
 
-
-rabbitmq_broker = RabbitmqBroker(url=config.RABBIT_URL)
-dramatiq.set_broker(rabbitmq_broker)
+#
+# rabbitmq_broker = RabbitmqBroker(url=config.RABBIT_URL)
+# dramatiq.set_broker(rabbitmq_broker)
 
 
 @singleton
@@ -28,7 +28,7 @@ class Manager:
 
     @staticmethod
     def run_index_async():
-        BaseTask.send()
+        IndexTask.send()
 
     def index(self):
         all_documents = self._http_repository.get_all_documents()
@@ -136,8 +136,15 @@ class BaseTask(GenericActor):
          max_retries = 20
 
     def get_task_name(self):
-        raise NotImplementedError
+        return 'Index'
 
     def perform(self):
         manager = Injector().get(Manager)
-        manager.index(manager)
+        manager.index()
+
+
+class IndexTask(BaseTask):
+
+    def get_task_name(self):
+        return 'Index'
+
