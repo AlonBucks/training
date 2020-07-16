@@ -24,19 +24,26 @@ def index_doc():
     return 'Document successfully indexed'
 
 
-@app.route('/search')
+@app.route('/search', methods=['GET', 'POST'])
 def search():
-    phrase = request.args.get('phrase')
-    case_sensitive = request.args.get('case')
+    if request.method == 'GET':
+        phrase = request.args.get('phrase')
+        case_sensitive = request.args.get('case')
+    else:
+        phrase = request.get_json().get('phrase')
+        case_sensitive = request.get_json().get('case')
     if not phrase:
         return 'phrase parameter not exists'
 
     return Injector().get(Manager).search(phrase, case_sensitive)
 
 
-@app.route('/exact')
+@app.route('/exact', methods=['GET', 'POST'])
 def exact():
-    phrase = request.args.get('phrase')
+    if request.method == 'GET':
+        phrase = request.args.get('phrase')
+    else:
+        phrase = request.get_json().get('phrase')
     if not phrase:
         return 'phrase parameter not exists'
 
