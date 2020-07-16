@@ -1,6 +1,7 @@
 import unittest
-from app import manager, cassandra_repository
 from unittest.mock import Mock
+from app.cassandra_repository import CassandraRepository
+from app.manager import Manager
 
 
 def get_documents_mock():
@@ -27,19 +28,20 @@ def get_documents_mock():
 class TestApp(unittest.TestCase):
 
     def setUp(self):
-        cassandra_repository.keyspace = 'test'
-        cassandra_repository.init()
+        self.cassandra_repository = CassandraRepository()
+        self.cassandra_repository.set_key_space('test')
+        self.cassandra_repository.init()
         http_mock = Mock()
-        http_mock.get_documents = get_documents_mock
-        manager.network_rep = http_mock
-        manager.index()
+        http_mock.get_all_documents = get_documents_mock
+        self.manager = Manager(self.cassandra_repository, http_mock)
+        self.manager.index(self.manager)
 
     def test_index(self):
-        rows = cassandra_repository.get_rows_by_words(['test1', 'test4'], 'words')
+        rows = self.cassandra_repository.get_rows_by_words(['test1', 'test4'], 'words')
         self.assertEqual(len(rows.current_rows), 2)
         for row in rows.current_rows:
             if row.word == 'test1':
-                docs_rows = cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
+                docs_rows = self.cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
                 self.assertEqual(len(row.docs), 1)
                 self.assertEqual(len(docs_rows), 1)
                 self.assertEqual(docs_rows[0].title, 'tables')
@@ -50,7 +52,7 @@ class TestApp(unittest.TestCase):
                 self.assertEqual(row.docs[key][2], {'test2'})
 
             if row.word == 'test4':
-                docs_rows = cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
+                docs_rows = self.cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
                 self.assertEqual(len(row.docs), 2)
                 self.assertEqual(len(docs_rows), 2)
                 first_key = [doc.id for doc in docs_rows if doc.title == 'chairs' and doc.author == 'Alon']
@@ -67,7 +69,7 @@ class TestApp(unittest.TestCase):
                 self.assertEqual(row.docs[second_key][2], {})
 
     def test_search(self):
-        res = manager.search('test1 test4')
+        res = self.manager.search('test1 test4')
         self.assertEqual(len(res), 3)
         self.assertEqual(res[str(('tables', 'Alon'))]['score'], 1)
         self.assertEqual(res[str(('tables', 'Alon'))]['idx'], [('test1', 0)])
@@ -77,13 +79,13 @@ class TestApp(unittest.TestCase):
         self.assertEqual(res[str(('tables', 'Dani'))]['idx'], [('test4', 3)])
 
     def test_exact(self):
-        res = manager.exact('test2 test3 test4')
+        res = self.manager.exact('test2 test3 test4')
         self.assertEqual(res, "[\"('tables', 'Dani')\"]")
 
     def test_fix_word(self):
-        self.assertEqual(manager.fix_word('AbCd'), 'AbCd')
-        self.assertEqual(manager.fix_word(None), None)
-        self.assertEqual(manager.fix_word('A:()bC,..d'), 'AbCd')
+        self.assertEqual(self.manager.fix_word('AbCd'), 'AbCd')
+        self.assertEqual(self.manager.fix_word(None), None)
+        self.assertEqual(self.manager.fix_word('A:()bC,..d'), 'AbCd')
 
     def test_check_doc(self):
         words = ['abcd', 'popo', 'kal', 'kjkj']
@@ -105,13 +107,12 @@ class TestApp(unittest.TestCase):
         ab_next_words = words_dict[words[0]][('a', 'b')][2]
         ag_next_words = words_dict[words[0]][('a', 'g')][2]
         res = []
-        manager.check_doc(words, words_dict, ('a', 'b'), ab_next_words, idx, res)
-        manager.check_doc(words, words_dict, ('a', 'g'), ag_next_words, idx, res)
-        self.assertEqual(res, [str(('a', 'b'))])
+        self.manager.check_doc(words, words_dict, ('a', 'b'), ab_next_words, idx, res)
+        self.manager.check_doc(words, words_dict, ('a', 'g'), ag_next_words, idx, res)
+        self.assertEqual(res, [('a', 'b')])
 
     def tearDown(self):
-        cassandra_repository.clear_test()
-        cassandra_repository.keyspace = 'words'
+        self.cassandra_repository.execute('DROP ' + 'KEYSPACE IF EXISTS test')
 
 
 if __name__ == '__main__':

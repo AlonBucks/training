@@ -1,12 +1,11 @@
 import requests
+from app import config
 
 
-DOCUMENTS_URL = 'http://intezer-documents-store.westeurope.cloudapp.azure.com/documents'
+class HTTPRepository:
 
+    def get_url_response(self, url):
+        return requests.get(url).json()
 
-def ger_results_by_url(url):
-    return requests.get(url).json()
-
-
-def get_documents():
-    return ger_results_by_url(DOCUMENTS_URL)
+    def get_all_documents(self):
+        return self.get_url_response(config.DOCUMENTS_URL)

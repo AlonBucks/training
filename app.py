@@ -1,7 +1,9 @@
-from app import manager
 from flask import Flask, request
+from injector import Injector
+from app.manager import Manager
 
 app = Flask(__name__)
+manager = Injector().get(Manager)
 
 
 @app.route('/init', methods=['GET', 'POST'])
@@ -25,12 +27,21 @@ def index_doc():
 
 @app.route('/search')
 def search():
-    return manager.search(request.args.get('p1'), request.args.get('p2'))
+    phrase = request.args.get('phrase')
+    case_sensitive = request.args.get('case')
+    if not phrase:
+        return 'phrase parameter not exists'
+
+    return manager.search(phrase, case_sensitive)
 
 
 @app.route('/exact')
 def exact():
-    return manager.exact(request.args.get('p1'))
+    phrase = request.args.get('phrase')
+    if not phrase:
+        return 'phrase parameter not exists'
+
+    return manager.exact(phrase)
 
 
 if __name__ == '__main__':
