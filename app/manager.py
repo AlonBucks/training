@@ -7,14 +7,16 @@ from dramatiq.brokers.rabbitmq import RabbitmqBroker
 from dramatiq import GenericActor
 
 
+rabbitmq_broker = RabbitmqBroker(url=config.RABBIT_URL)
+dramatiq.set_broker(rabbitmq_broker)
+
+
 @singleton
 class Manager:
     @inject
     def __init__(self, cassandra_repository: CassandraRepository, http_repository: HTTPRepository):
         self._cassandra_repository = cassandra_repository
         self._http_repository = http_repository
-        rabbitmq_broker = RabbitmqBroker(url=config.RABBIT_URL)
-        dramatiq.set_broker(rabbitmq_broker)
         index_task.manager = self
 
     def init(self):
