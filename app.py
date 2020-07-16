@@ -17,7 +17,7 @@ def index():
     return 'Indexing all documents'
 
 
-@app.route('/index_doc', methods=['GET', 'POST'])
+@app.route('/documents/index', methods=['GET', 'POST'])
 def index_doc():
     doc = (request.args.get('title'), request.args.get('author'), request.args.get('content'))
     Injector().get(Manager).index_document(doc)
