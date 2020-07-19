@@ -20,9 +20,6 @@ class Manager:
         self._cassandra_repository = cassandra_repository
         self._http_repository = http_repository
 
-    def init(self):
-        self._cassandra_repository.init()
-
     def create_session(self):
         self._cassandra_repository.create_session()
 

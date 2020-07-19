@@ -2,13 +2,14 @@ from flask import Flask
 from flask import request
 from injector import Injector
 from app.manager import Manager
+from app.cassandra_repository import CassandraRepository
 
 app = Flask(__name__)
 
 
 @app.route('/init', methods=['GET', 'POST'])
 def init():
-    Injector().get(Manager).init()
+    Injector().get(CassandraRepository).init()
     return 'App successfully initialized'
 
 
