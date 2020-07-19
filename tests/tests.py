@@ -30,14 +30,15 @@ class TestApp(unittest.TestCase):
     def setUp(self):
         self.cassandra_repository = CassandraRepository()
         self.cassandra_repository.set_keyspace('test')
+        self.cassandra_repository.create_session()
         self.cassandra_repository.init()
         http_mock = Mock()
         http_mock.get_all_documents = get_documents_mock
         self.manager = Manager(self.cassandra_repository, http_mock)
-        self.manager.index(self.manager)
+        self.manager.index()
 
     def test_index(self):
-        rows = self.cassandra_repository.get_db_rows_by_words_list(['test1', 'test4'], 'words')
+        rows = self.cassandra_repository.get_words_data_by_words_list(['test1', 'test4'], False)
         self.assertEqual(len(rows.current_rows), 2)
         for row in rows.current_rows:
             if row.word == 'test1':
@@ -47,9 +48,8 @@ class TestApp(unittest.TestCase):
                 self.assertEqual(docs_rows[0].title, 'tables')
                 self.assertEqual(docs_rows[0].author, 'Alon')
                 key = list(row.docs.keys())[0]
-                self.assertEqual(row.docs[key][0], 1)
-                self.assertEqual(row.docs[key][1], 0)
-                self.assertEqual(row.docs[key][2], {'test2'})
+                self.assertEqual(len(row.docs[key]), 1)
+                self.assertIn(0, row.docs[key])
 
             if row.word == 'test4':
                 docs_rows = self.cassandra_repository.get_documents_by_ids([x for x in row.docs]).current_rows
@@ -61,22 +61,21 @@ class TestApp(unittest.TestCase):
                 self.assertEqual(len(second_key), 1)
                 first_key = first_key[0]
                 second_key = second_key[0]
-                self.assertEqual(row.docs[first_key][0], 2)
-                self.assertEqual(row.docs[first_key][1], 0)
-                self.assertEqual(row.docs[first_key][2], {'test5', 'test9'})
-                self.assertEqual(row.docs[second_key][0], 1)
-                self.assertEqual(row.docs[second_key][1], 3)
-                self.assertEqual(row.docs[second_key][2], {})
+                self.assertEqual(len(row.docs[first_key]), 2)
+                self.assertIn(0, row.docs[first_key])
+                self.assertIn(2, row.docs[first_key])
+                self.assertEqual(len(row.docs[second_key]), 1)
+                self.assertIn(3, row.docs[second_key])
 
     def test_search(self):
         res = self.manager.search('test1 test4')
         self.assertEqual(len(res), 3)
         self.assertEqual(res[str(('tables', 'Alon'))]['score'], 1)
-        self.assertEqual(res[str(('tables', 'Alon'))]['idx'], [('test1', 0)])
+        self.assertEqual(res[str(('tables', 'Alon'))]['idx'], [('test1', [0])])
         self.assertEqual(res[str(('chairs', 'Alon'))]['score'], 2)
-        self.assertEqual(res[str(('chairs', 'Alon'))]['idx'], [('test4', 0)])
+        self.assertEqual(res[str(('chairs', 'Alon'))]['idx'], [('test4', [0, 2])])
         self.assertEqual(res[str(('tables', 'Dani'))]['score'], 1)
-        self.assertEqual(res[str(('tables', 'Dani'))]['idx'], [('test4', 3)])
+        self.assertEqual(res[str(('tables', 'Dani'))]['idx'], [('test4', [3])])
 
     def test_exact(self):
         res = self.manager.exact('test2 test3 test4')
@@ -91,25 +90,24 @@ class TestApp(unittest.TestCase):
         words = ['abcd', 'popo', 'kal', 'kjkj']
         words_dict = {
             'abcd': {
-                ('a', 'g'): (10, 5, {'abc123', 'abcdk'}),
-                ('a', 'b'): (10, 5, {'kjkj', 'popo'})},
+                'ag': {0, 10},
+                'ab': {4}},
             'popo': {
-                ('a', 'g'): (10, 5, {'abc1fcfc23', 'abcdk'}),
-                ('a', 'b'): (10, 5, {'kal', 'bal'})},
+                'ag': {1, 20, 50},
+                'ab': {5, 13, 9}},
             'kal': {
-                ('a', 'g'): (10, 5, {'abc1fcfc23', 'abcdk'}),
-                ('a', 'b'): (10, 5, {'kjkj', 'plplplpl'})},
+                'ag': {2},
+                'ab': {6, 20, 50}},
             'kjkj': {
-                ('a', 'g'): (10, 5, {'abc1fcfc23', 'abcdk'}),
-                ('a', 'b'): (10, 5, {'kjkj', 'plpfflplpl'})}
+                'ag': {70},
+                'ab': {7, 56}}
         }
-        idx = 1
-        ab_next_words = words_dict[words[0]][('a', 'b')][2]
-        ag_next_words = words_dict[words[0]][('a', 'g')][2]
+        ab_indexes = words_dict[words[0]]['ab']
+        ag_indexes = words_dict[words[0]]['ag']
         res = []
-        self.manager.check_doc(words, words_dict, ('a', 'b'), ab_next_words, idx, res)
-        self.manager.check_doc(words, words_dict, ('a', 'g'), ag_next_words, idx, res)
-        self.assertEqual(res, [('a', 'b')])
+        self.manager.check_doc(words, words_dict, 'ab', ab_indexes, res)
+        self.manager.check_doc(words, words_dict, 'ag', ag_indexes, res)
+        self.assertEqual(res, ['ab'])
 
     def tearDown(self):
         self.cassandra_repository.execute('DROP ' + 'KEYSPACE IF EXISTS test')

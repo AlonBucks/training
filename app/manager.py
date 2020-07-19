@@ -8,9 +8,9 @@ from app.http_repository import HTTPRepository
 from dramatiq.brokers.rabbitmq import RabbitmqBroker
 from dramatiq import GenericActor
 
-#
-# rabbitmq_broker = RabbitmqBroker(url=config.RABBIT_URL)
-# dramatiq.set_broker(rabbitmq_broker)
+
+rabbitmq_broker = RabbitmqBroker(url=config.RABBIT_URL)
+dramatiq.set_broker(rabbitmq_broker)
 
 
 @singleton
@@ -47,19 +47,11 @@ class Manager:
             if '<' not in word:
                 word = self.remove_special_chars_from_word(word)
                 if word not in config.COMMON and len(word) >= 3:
-
-                    next_word = None if idx + 1 >= len(words) else words[idx + 1]
-
                     if word not in words_dict:
                         words_dict[word] = {}
-                        words_dict[word]['count'] = 1
-                        words_dict[word]['idx'] = counter
-                        words_dict[word]['next'] = set()
-                    else:
-                        words_dict[word]['count'] += 1
+                        words_dict[word]['indexes'] = set()
 
-                    if next_word:
-                        words_dict[word]['next'].add(self.remove_special_chars_from_word(next_word))
+                    words_dict[word]['indexes'].add(counter)
 
                 counter += 1
 
@@ -75,25 +67,20 @@ class Manager:
         return word
 
     def search(self, str_arg, case=False):
-        table = 'lower_words' if case else 'words'
-
         res = {}
 
-        rows = self._cassandra_repository.get_db_rows_by_words_list(str_arg.split(), table)
+        rows = self._cassandra_repository.get_words_data_by_words_list(str_arg.split(), case)
 
         for row in rows.current_rows:
-            for doc_id, details in row.docs.items():
-                # document details contains:
-                # (0) score of the word on the specific document
-                # (1) index of the first appearance of the word in the doc
+            for doc_id, indexes in row.docs.items():
                 if doc_id in res:
-                    res[doc_id]['score'] += details[0]
+                    res[doc_id]['score'] += len(indexes)
                 else:
                     res[doc_id] = {}
-                    res[doc_id]['score'] = details[0]
+                    res[doc_id]['score'] = len(indexes)
                     res[doc_id]['idx'] = []
 
-                res[doc_id]['idx'].append((row.word, details[1]))
+                res[doc_id]['idx'].append((row.word, list(indexes)))
 
         docs_rows = self._cassandra_repository.get_documents_by_ids(list(res.keys())).current_rows
         docs_dict = {x.id: x for x in docs_rows}
@@ -103,7 +90,7 @@ class Manager:
 
     def exact(self, str_arg):
         words = str_arg.split()
-        rows = self._cassandra_repository.get_db_rows_by_words_list(words, 'words')
+        rows = self._cassandra_repository.get_words_data_by_words_list(words, False)
         res_docs = []
 
         if len(words) == len(rows.current_rows):
@@ -111,8 +98,8 @@ class Manager:
             for row in rows.current_rows:
                 words_dict[row.word] = row.docs
 
-            for doc, details in words_dict[words[0]].items():
-                self.check_doc(words, words_dict, doc, details[2], 1, res_docs)
+            for doc, indexes in words_dict[words[0]].items():
+                self.check_doc(words, words_dict, doc, indexes, res_docs)
 
         docs_rows = self._cassandra_repository.get_documents_by_ids(res_docs).current_rows
 
@@ -120,13 +107,16 @@ class Manager:
 
         return str(res)
 
-    def check_doc(self, words, words_dict, doc, next_words, idx, res):
-        if idx == len(words):
-            res.append(doc)
-            return
-
-        if words[idx] in next_words:
-            self.check_doc(words, words_dict, doc, words_dict[words[idx]][doc][2], idx + 1, res)
+    def check_doc(self, words, words_dict, doc, indexes, res):
+        doc_contain_word = True
+        for index in indexes:
+            for idx, word in enumerate(words):
+                if doc not in words_dict[word] or index+idx not in words_dict[word][doc]:
+                    doc_contain_word = False
+                    break
+            if doc_contain_word:
+                res.append(doc)
+            doc_contain_word = True
 
 
 class BaseTask(GenericActor):

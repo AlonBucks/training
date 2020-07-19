@@ -33,7 +33,8 @@ class CassandraRepository:
     def execute(self, query_to_run, params=None):
         return self.session.execute(query_to_run, params)
 
-    def get_db_rows_by_words_list(self, words: List[str], table: str):
+    def get_words_data_by_words_list(self, words: List[str], case: bool):
+        table = 'lower_words' if case else 'words'
         query_state = 'SELECT ' + f'word, docs FROM {table} WHERE word IN %s'
         rows = self.execute(query_state, (query.ValueSequence(words),))
         return rows
@@ -46,11 +47,11 @@ class CassandraRepository:
             self.execute(statement)
 
     def upsert_word(self, word: str, doc_id: str, details):
-        self.execute('UPDATE ' + 'words SET docs = docs + {%s:(%s,%s,%s)} where word = %s',
-                     (doc_id, details['count'], details['idx'], details['next'], word))
+        self.execute('UPDATE ' + 'words SET docs = docs + {%s:%s} where word = %s',
+                     (doc_id, details['indexes'], word))
 
-        self.execute('UPDATE ' + 'lower_words SET docs = docs + {%s:(%s,%s)} where word = %s',
-                     (doc_id, details['count'], details['idx'], word.lower()))
+        self.execute('UPDATE ' + 'lower_words SET docs = docs + {%s:%s} where word = %s',
+                     (doc_id, details['indexes'], word.lower()))
 
     def insert_doc(self, doc):
         doc_id = uuid.uuid4()
